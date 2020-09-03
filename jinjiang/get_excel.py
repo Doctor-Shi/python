@@ -2,6 +2,39 @@ import pymysql
 import util
 
 
+class QueryInfo:
+    def __init__(self):
+        self.school_name = None
+        self.month = 0
+        self.coach_name = None
+
+
+def set_school_name():
+    school_name = str(input("输入学校名称：(不输入表示查询所有校区数据)"))
+    if school_name == '':
+        school_name = None
+    return school_name
+
+
+def set_month():
+    month = input("输入月份：(输入None表示查询所有月份数据)")
+    return month
+
+
+def set_coach_name():
+    coach_name = input("输入教练名称：(输入None表示查询所有教练数据)")
+    if coach_name == '':
+        coach_name = None
+    return coach_name
+
+
+def get_choose():
+    print("请输入你想实现的功能：")
+    print("1：查看门店学生的合同情况")
+    print("2：查看门店学生的查询月份的生日情况")
+    return input("输入你的选择")
+
+
 class Excel:
     @staticmethod
     def write_excel(list1):
@@ -44,17 +77,39 @@ class Mysql:
     def query_birthday(self, month, school):
         sql = "select student_name,student_birthday,gender from customer where school_id = '" + school + "';"
         self.cursor.execute(sql)
-        for row in self.cursor.fetchall():
-            if row[0] is not None:
-                if row[1].month == month:
-                    print("student_name:%s\t student_birthday:%s\t gender:%s" %
-                          (row[0], row[1], util.Util.get_gender(row[2])))
-                    self.birthday_name_list.append(row)
 
-        print(f"一共查找到当月生日学生：{len(self.birthday_name_list)} 个")
-        # print(self.birthday_name_list)
-        # Excel.write_excel(self.birthday_name_list)
-        self.birthday_name_list.clear()
+        # 如果传入的是0  表示查询所有孩子的生日信息 按照将查询结果按照月份排序
+        if month == 0:
+            # 创建保存12个月数据的二维数组
+            student_list = [[] for i in range(12)]
+            student_number = 0
+            for row in self.cursor.fetchall():
+                temp_list = [row[0], row[1], util.Util.get_gender(row[2])]
+                student_list[row[1].month - 1].append(temp_list)
+
+            #   打印例表中的名单
+            for i in range(len(student_list)):
+                print(f" {i + 1}月生日学生名单:")
+                for j in range(len(student_list[i])):
+                    # print(student_list[i][j])
+                    student_number += 1
+                    print("student_name:%s\t student_birthday:%s\t gender:%s" %
+                          (student_list[i][j][0], student_list[i][j][1], student_list[i][j][2]))
+
+            print(f"一共查找到生日学生：{student_number} 个")
+
+        else:
+            for row in self.cursor.fetchall():
+                if row[0] is not None:
+                    if row[1].month == month:
+                        print("student_name:%s\t student_birthday:%s\t gender:%s" %
+                              (row[0], row[1], util.Util.get_gender(row[2])))
+                        self.birthday_name_list.append(row)
+
+            print(f"一共查找到当月生日学生：{len(self.birthday_name_list)} 个")
+            # print(self.birthday_name_list)
+            # Excel.write_excel(self.birthday_name_list)
+            self.birthday_name_list.clear()
 
     # 查询某一门店的课程剩余情况
     def query_contract(self, month, school):
@@ -86,25 +141,50 @@ class Mysql:
         print(f"一共查找到：{len(self.print_list)}")
         Excel.write_excel(self.print_list)
 
+    def query_employee(self, school, coach):
+        #  根据school 查找教练名单
+        if coach is None:
+            sql = "select name, id from employee where position = 'COACH' and school_id = '" + school + \
+                  "' and is_del = 0;"
+        else:
+            sql = "select name, id from employee where position = 'COACH' and school_id = '" + school + \
+                  "' and is_del = 0 and name = '" + coach + "';"
+
+        self.cursor.execute(sql)
+        return self.cursor.fetchall()
+
     def end(self):
         self.cursor.close()
         self.content.close()
 
 
 if __name__ == '__main__':
-    Month = 9
-    School_name = "帝景店"
+
+    query_info = QueryInfo()
+    print("欢迎使用金匠查询系统：")
+    query_info.month = int(set_month())
+    query_info.school_name = set_school_name()
+    choose = get_choose()
+    print(choose)
 
     # 打开连接
     mysql = Mysql()
-    school_list = mysql.query_school(School_name)
+    school_list = mysql.query_school(query_info.school_name)
+    if choose == '1':
+        for data in school_list:
+            print("%s 本月学生合同情况如下：" % (data[1]))
+            mysql.query_contract(query_info.month, data[0])
+    elif choose == '2':
+        for data in school_list:
+            print("%s %d月生日的学生名单一共有：" % (data[1], query_info.month))
+            mysql.query_birthday(query_info.month, data[0])
+    elif choose == '3':
+        query_info.coach_name = set_coach_name()
+        for data in school_list:
+            employee_list = mysql.query_employee(data[0], query_info.coach_name)
 
-    for data in school_list:
-        print("%s %d月生日的学生名单一共有：" % (data[1], Month))
+            for coach_data in employee_list:
+                print("现在查询的是 %s 教练的数据" % (data[0]))
 
-        # 查找生日列表
-        # mysql.query_birthday(Month, data[0])
-        mysql.query_contract(Month, data[0])
-        # print(mysql.print_list)
     # 关闭连接
     mysql.end()
